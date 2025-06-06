@@ -1,0 +1,177 @@
+{{ header }}
+
+@functools.wraps(pydantic.Field)
+def Field(
+    attr: str | None = None,
+    tao_name: str | None = None,
+    **kwargs,
+):
+    """
+    Creates a Pydantic Field based on a pytao parameter.
+
+    Parameters
+    ----------
+    attr : str or None, optional
+        The Python class attribute name.
+    tao_name : str or None, optional
+        The pytao key associated with the attribute, if it differs from `attr`.
+    **kwargs
+        Additional keyword arguments passed to the Pydantic Field constructor.
+
+    Returns
+    -------
+    pydantic.fields.FieldInfo
+    """
+    if tao_name is not None:
+        assert attr is not None
+        return pydantic.Field(
+            validation_alias=pydantic.AliasChoices(
+                attr,
+                tao_name,
+            ),
+            serialization_alias=tao_name,
+            **kwargs,
+        )
+    return pydantic.Field(**kwargs)
+
+
+@functools.wraps(pydantic.Field)
+def ROField(
+    attr: str | None = None,
+    tao_name: str | None = None,
+    **kwargs,
+):
+    """
+    Creates a read-only Pydantic Field based on a pytao parameter.
+
+    Parameters
+    ----------
+    attr : str or None, optional
+        The Python class attribute name.
+    tao_name : str or None, optional
+        The pytao key associated with the attribute, if it differs from `attr`.
+    **kwargs
+        Additional keyword arguments passed to the Pydantic Field constructor.
+
+    Returns
+    -------
+    pydantic.fields.FieldInfo
+    """
+    return Field(
+        attr=attr,
+        tao_name=tao_name,
+        frozen=True,
+        **kwargs,
+    )
+
+{% macro field_value(param) -%}
+    {{ " =" -}} 
+    {%- if param.param is none or not param.param.can_vary -%}
+    ROField(
+    {%- else -%}
+    Field(
+    {%- endif -%}
+    {%- if param.default_factory -%}
+        default_factory={{ param.default_factory }},
+    {%- else -%}
+        default={{ param.default | repr }},
+    {%- endif -%}
+    {%- if not param | is_structure -%}
+      {%- if param.dimension | int != 0 -%}
+        max_length={{ param.dimension }},
+      {%- endif -%}
+    {%- endif -%}
+    {%- if param.comment | length > 80 -%}
+        {%- set lines = param.comment | replace('"', "'") | wordwrap(width=74) | splitlines %}
+        description=({%- for line in lines %}
+        {%- if loop.last %}
+            {{ line | maybe_raw_string }}"{{ line }}"
+        {%- else %}
+            {{ line | maybe_raw_string }}"{{ line }} "
+        {%- endif %}
+        {%- endfor %}
+        ),
+    {%- elif param.comment -%}
+        description={{ param.comment | maybe_raw_string }}"{{ param.comment | replace('"', "'") }}",
+    {%- endif -%}
+    {%- if param.name != param.python_name %}
+        attr="{{ param.python_name }}",
+        tao_name="{{ param.name }}"
+    {%- endif -%}
+{%- endmacro%}
+{%- macro get_docstring(py_struct) %}
+    {{ py_struct.comment }}
+
+    Attributes
+    ----------
+    {%- for name, param in py_struct.members | dictsort %}
+    {{ name }} : {{ param | get_docstring_type }}{% if param.optional %} or None{% endif %}
+        {%- if param.comment %}
+        {{ param.comment | wordwrap | indent(8) }}
+        {%- endif  %}
+    {%- endfor %}
+{%- endmacro %}
+
+{% macro make_class(py_struct) -%}
+{%- set docstring = get_docstring(py_struct) %}
+
+{%- for name, param in py_struct.members | dictsort %}
+{%- if param | is_structure %}
+{{ make_class(param) }}
+{%- endif %}
+{%- endfor %}
+
+class {{ py_struct.class_name }}({{ py_struct.base_class }}):
+    {{ docstring | maybe_raw_string }}
+    """
+    {{- docstring }}
+    """
+    {%- if py_struct.base_class == "TaoModel" or py_struct.base_class == "TaoSettableModel" %}
+    _tao_command_: ClassVar[str] = "{{ py_struct.tao_command }}"
+    _tao_command_default_args_: ClassVar[dict[str, Any]] = {{ py_struct.tao_command_default_args }}
+    {%- endif %}
+    {%- if py_struct.base_class == "TaoSettableModel" or py_struct.base_class == "TaoAttributesModel" %}
+    _tao_skip_if_0_: ClassVar[tuple[str, ...]] = {{ py_struct.skip_if_0 }}
+    {%- endif %}
+    {%- for name, value in py_struct.discriminators | dictsort %}
+    {{ name }}: Literal["{{ value }}"] # = "{{ value }}"
+    {%- endfor %}
+
+    {% for name, param in py_struct.members | dictsort %}
+    {%- set type_name = param | get_param_type %}
+    {%- if param.optional %}
+      {%- set type_name = type_name + " | None" %}
+    {%- endif %}
+    {{ name  }}: {{ type_name }} {{ field_value(param) | trim(",") }} )
+    {%- endfor %}
+{%- endmacro %}
+
+{%- for struct_name, py_struct in all_structs | dictsort %}
+{{ make_class(py_struct) }}
+{%- endfor %}
+
+{% for type_name, structs in aggregate_types.items() %}
+{{ type_name }} = 
+{%- for struct in structs -%}
+  {{ struct.class_name }}
+  {%- if not loop.last -%}| {% endif -%}
+{%- endfor %}
+
+{%- endfor %}
+
+{% for type_name, structs in aggregate_types.items() %}
+
+key_to_{{ type_name | lower }}: dict[str, type[pydantic.BaseModel]] = {{ "{" }}
+{%- for struct in structs %}
+    "{{ struct.discriminators.key }}": {{ struct.class_name }},
+{%- endfor %}
+{{ "}" }}
+
+{{ type_name | lower }}_to_key: dict[type[pydantic.BaseModel], str] = {{ "{" }}
+{%- for struct in structs %}
+    {{ struct.class_name }}: "{{ struct.discriminators.key }}",
+{%- endfor %}
+{{ "}" }}
+
+
+{% endfor %}

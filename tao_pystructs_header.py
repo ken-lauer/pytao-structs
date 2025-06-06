@@ -1,0 +1,278 @@
+#!/usr/bin/env python
+# vi: syntax=python sw=4 ts=4 sts=4
+"""
+This file is auto-generated; do not hand-edit it.
+"""
+
+from __future__ import annotations
+
+import contextlib
+import functools  # noqa: F401
+import logging
+import textwrap
+from typing import (
+    cast,
+    Annotated,
+    Any,
+    ClassVar,
+    Literal,  # noqa: F401
+    Sequence,
+)
+
+import numpy as np
+import pydantic
+
+from genesis.version4.types import _check_equality
+from pytao import Tao
+from rich.pretty import pretty_repr
+from typing_extensions import Self
+
+
+# TODO: reduce reliance on [internal-ish] lume-genesis API (genesis.version4.types._check_equality)
+logger = logging.getLogger(__name__)
+
+
+def _sequence_helper(value):
+    if isinstance(value, np.ndarray):
+        return value.tolist()
+    if isinstance(value, (int, float)):
+        return [value]
+    return list(value)
+
+
+FloatSequence = Annotated[Sequence[float], pydantic.BeforeValidator(_sequence_helper)]
+IntSequence = Annotated[Sequence[int], pydantic.BeforeValidator(_sequence_helper)]
+ArgumentType = int | float | str | IntSequence | FloatSequence
+
+
+class TaoModel(
+    pydantic.BaseModel,
+    str_strip_whitespace=True,  # Strip whitespace from strings
+    str_min_length=0,  # We can't write empty strings currently
+    validate_assignment=True,
+    extra="forbid",
+):
+    """
+    A helper base class which allows for creating/updating an instance with Tao objects.
+    """
+
+    _tao_command_: ClassVar[str]
+    _tao_command_default_args_: ClassVar[dict[str, Any]]
+
+    command_args: dict[str, ArgumentType] = pydantic.Field(
+        default_factory=dict,
+        frozen=True,
+        description="Arguments used for the pytao command to generate this structure",
+        repr=False,
+    )
+
+    def query(self, tao: Tao) -> Self:
+        """Query Tao again to generate a new instance of this model."""
+        return self.from_tao(tao, **self.command_args)
+
+    @classmethod
+    def from_tao(cls: type[Self], tao: Tao, **kwargs) -> Self:
+        """
+        Create this structure by querying Tao for its current values.
+
+        Parameters
+        ----------
+        tao : Tao
+        **kwargs :
+            Keyword arguments to pass to the relevant ``tao`` command.
+        """
+        cmd_kwargs = dict(cls._tao_command_default_args_)
+        cmd_kwargs.update(**kwargs)
+
+        cmd = getattr(tao, cls._tao_command_)
+        data = cmd(**cmd_kwargs)
+        return cls(command_args=cmd_kwargs, **data)
+
+    def __eq__(self, other) -> bool:
+        return _check_equality(self, other)
+
+    def __repr__(self):
+        return pretty_repr(self)
+
+
+class TaoSettableModel(TaoModel):
+    """
+    A helper base class which allows for setting Tao parameters based on
+    instance attributes.
+    """
+
+    # Do not set these keys if the values are 0, avoiding setting other things.
+    _tao_skip_if_0_: ClassVar[tuple[str, ...]]
+
+    @property
+    def settable_fields(self) -> list[str]:
+        """Names of all 'settable' (modifiable) fields."""
+        return [attr for attr, field_info in self.model_fields.items() if not field_info.frozen]
+
+    @property
+    def _all_attributes_to_set(self):
+        for attr in self.settable_fields:
+            value = getattr(self, attr)
+
+            if attr in self._tao_skip_if_0_ and value == 0:
+                continue
+
+            if np.isscalar(value):
+                yield attr, None, value
+            else:
+                for index, val in enumerate(value):
+                    yield attr, index, val
+
+    def _get_changed_attributes(self, tao: Tao):
+        current = self.query(tao)
+
+        cmds = []
+        for attr, index, value in self._all_attributes_to_set:
+            current_value = getattr(current, attr)
+            new_value = getattr(self, attr)
+            if index is not None:
+                new_value = new_value[index]
+                current_value = current_value[index]
+
+            if not _check_equality(current_value, new_value):
+                yield attr, index, value
+
+        return cmds
+
+    def get_set_commands(self, tao: Tao | None = None):
+        """
+        Generate a list of set commands for attributes.
+
+        Parameters
+        ----------
+        tao : Tao or None, optional
+            An instance of the Tao class, if provided. If `None`, all attributes
+            to be set will be used.
+
+        Returns
+        -------
+        cmds : list of str
+        """
+        cmds = []
+        if tao is not None:
+            attrs = self._get_changed_attributes(tao)
+        else:
+            attrs = self._all_attributes_to_set
+
+        for attr, index, value in attrs:
+            if index is None:
+                cmds.append(f"set {self._tao_command_} {attr} = {value}")
+            else:
+                cmds.append(f"set {self._tao_command_} {attr}({index + 1}) = {value}")
+        return cmds
+
+    @property
+    def set_commands(self) -> list[str]:
+        """
+        Get all Tao 'set' commands to apply this configuration.
+
+        Returns
+        -------
+        list of str
+        """
+        return self.get_set_commands(tao=None)
+
+    def set(
+        self,
+        tao: Tao,
+        *,
+        allow_errors: bool = False,
+        only_changed: bool = False,
+        suppress_plotting: bool = True,
+        suppress_lattice_calc: bool = True,
+        log: str = "DEBUG",
+    ) -> bool:
+        """
+        Apply this configuration to Tao.
+
+        Parameters
+        ----------
+        tao : Tao
+            The Tao instance to which the configuration will be applied.
+        allow_errors : bool, default=False
+            Allow individual commands to raise errors.
+        only_changed : bool, default=False
+            Only apply changes that differ from the current configuration in Tao.
+        suppress_plotting : bool, default=True
+            Suppress any plotting updates during the commands.
+        suppress_lattice_calc : bool, default=True
+            Suppress lattice calculations during the commands.
+        log : str, default="DEBUG"
+            The log level to use during the configuration application.
+
+        Returns
+        -------
+        success : bool
+            Returns True if the configuration was applied without errors.
+        """
+        cmds = self.get_set_commands(tao=tao if only_changed else None)
+        if not cmds:
+            return True
+
+        success = True
+
+        tao_global = cast(dict[str, Any], tao.tao_global())
+        plot_on = tao_global["plot_on"]
+        lat_calc_on = tao_global["lattice_calc_on"]
+
+        if suppress_plotting and plot_on:
+            tao.cmd("set global plot_on = F")
+        if suppress_lattice_calc and lat_calc_on:
+            tao.cmd("set global lattice_calc_on = F")
+
+        log_level: int = getattr(logging, log.upper())
+
+        try:
+            for cmd in self.get_set_commands(tao=tao if only_changed else None):
+                try:
+                    logger.log(log_level, f"Tao> {cmd}")
+                    for line in tao.cmd(cmd):
+                        logger.log(log_level, f"{line}")
+                except Exception as ex:
+                    if not allow_errors:
+                        raise
+                    success = False
+                    reason = textwrap.indent(str(ex), "  ")
+                    logger.error(f"{cmd!r} failed with:\n{reason}")
+        finally:
+            if suppress_plotting and plot_on:
+                tao.cmd("set global plot_on = T")
+            if suppress_lattice_calc and lat_calc_on:
+                tao.cmd("set global lattice_calc_on = T")
+
+        return success
+
+    @contextlib.contextmanager
+    def set_context(self, tao: Tao):
+        """
+        Apply this configuration to Tao **only** for the given ``with`` block.
+
+        Examples
+        --------
+
+        Set an initial value for a parameter:
+
+        >>> new_state.param = 1
+        >>> new_state.set()
+
+        Then temporarily set it to another value, just for the `with` block:
+
+        >>> new_state.param = 3
+        >>> with new_state.set_context(tao):
+        ...     assert new_state.query(tao).param == 3
+
+        After the ``with`` block, ``param`` will be reset to its previous
+        value:
+
+        >>> assert new_state.query(tao).param == 1
+        """
+        pre_state = self.query(tao)
+        for cmd in self.set_commands:
+            tao.cmd(cmd)
+        yield pre_state
+        pre_state.set(tao)

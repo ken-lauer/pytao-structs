@@ -1,0 +1,3 @@
+[submodule "bmad"]
+	path = bmad
+	url = https://github.com/ken-lauer/bmad-ecosystem

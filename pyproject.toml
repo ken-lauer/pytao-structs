@@ -1,0 +1,21 @@
+[tool.ruff]
+# Reference and defaults: https://docs.astral.sh/ruff/configuration/
+# exclude = []
+line-length = 100
+indent-width = 4
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+  # Pycodestyle E errors: https://pycodestyle.pycqa.org/en/latest/intro.html
+  "E4",
+  "E7",
+  "E9",
+  # pyflakes F error codes:
+  # https://flake8.pycqa.org/en/latest/user/error-codes.html
+  "F",
+]
+ignore = [
+  # Ignore ambiguous variables such as `I`
+  "E741",
+]
