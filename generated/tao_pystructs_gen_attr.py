@@ -93,7 +93,9 @@ class TaoAttributesModel(
     A helper base class which allows for creating/updating an instance with Tao objects.
     """
 
-    _tao_command_: ClassVar[str] = ""
+    # The `Tao.cmd_attr` command to query this information.
+    _tao_command_attr_: ClassVar[str]
+    # Default arguments to pass to `Tao.cmd_attr(**default_args)`
     _tao_command_default_args_: ClassVar[dict[str, Any]] = {"which": "model"}
     _tao_skip_if_0_: ClassVar[tuple[str, ...]] = ()
 

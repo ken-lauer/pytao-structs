@@ -127,7 +127,10 @@ class {{ py_struct.class_name }}({{ py_struct.base_class }}):
     {{- docstring }}
     """
     {%- if py_struct.base_class == "TaoModel" or py_struct.base_class == "TaoSettableModel" %}
-    _tao_command_: ClassVar[str] = "{{ py_struct.tao_command }}"
+    _tao_command_attr_: ClassVar[str] = "{{ py_struct.tao_command }}"
+    {%- if py_struct.tao_set_name and py_struct.tao_set_name != py_struct.tao_command %}
+    _tao_set_name_: ClassVar[str] = "{{ py_struct.tao_set_name }}"
+    {%- endif %}
     _tao_command_default_args_: ClassVar[dict[str, Any]] = {{ py_struct.tao_command_default_args }}
     {%- endif %}
     {%- if py_struct.base_class == "TaoSettableModel" or py_struct.base_class == "TaoAttributesModel" %}

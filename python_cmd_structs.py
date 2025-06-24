@@ -577,6 +577,7 @@ class PipeOutputParameter(pydantic.BaseModel):
 class PipeOutputStructure(pydantic.BaseModel):
     cmd: TaoCommandAndResult | None
     tao_command: str
+    tao_set_name: str | None = None
     class_name: str
     comment: str
     skip_if_0: tuple[str, ...] = pydantic.Field(default_factory=tuple)
@@ -616,6 +617,7 @@ class PipeOutputStructure(pydantic.BaseModel):
         mark_empty_lists: Iterable[str] = (),
         skip_prefixes: Iterable[str] = (),
         tao_command_attr_name: str | None = None,
+        tao_set_name: str | None = None,
         **kwargs,
     ):
         optional = set(mark_optional)
@@ -708,6 +710,8 @@ class PipeOutputStructure(pydantic.BaseModel):
             tao_command = tao_command_attr_name
         else:
             tao_command = cmd.cmd.split()[0].replace(":", "_") if cmd else ""
+
+        tao_set_name = tao_set_name or tao_command
         return cls(
             cmd=cmd,
             class_name=class_name,
@@ -716,6 +720,7 @@ class PipeOutputStructure(pydantic.BaseModel):
             full_path=full_path,
             path=path,
             tao_command=tao_command,
+            tao_set_name=tao_set_name,
             **kwargs,
         )
 
@@ -1139,6 +1144,7 @@ def generate_structures():
         reference_classes=(structs_by_name["tao_global_struct"],),
         base_class="TaoSettableModel",
         tao_command_attr_name="tao_global",
+        tao_set_name="global",
         mark_optional={},
     )
 

@@ -30,7 +30,7 @@ from typing_extensions import Self
 logger = logging.getLogger(__name__)
 
 
-def _sequence_helper(value):
+def _sequence_to_list(value):
     if isinstance(value, np.ndarray):
         return value.tolist()
     if isinstance(value, (int, float)):
@@ -95,8 +95,8 @@ def _check_equality(obj1: Any, obj2: Any) -> bool:
     return bool(obj1 == obj2)
 
 
-FloatSequence = Annotated[Sequence[float], pydantic.BeforeValidator(_sequence_helper)]
-IntSequence = Annotated[Sequence[int], pydantic.BeforeValidator(_sequence_helper)]
+FloatSequence = Annotated[Sequence[float], pydantic.BeforeValidator(_sequence_to_list)]
+IntSequence = Annotated[Sequence[int], pydantic.BeforeValidator(_sequence_to_list)]
 ArgumentType = int | float | str | IntSequence | FloatSequence
 
 
@@ -111,7 +111,9 @@ class TaoModel(
     A helper base class which allows for creating/updating an instance with Tao objects.
     """
 
-    _tao_command_: ClassVar[str]
+    # The `Tao.cmd_attr` command to query this information.
+    _tao_command_attr_: ClassVar[str]
+    # Default arguments to pass to `Tao.cmd_attr(**default_args)`
     _tao_command_default_args_: ClassVar[dict[str, Any]]
 
     command_args: dict[str, ArgumentType] = pydantic.Field(
@@ -139,7 +141,7 @@ class TaoModel(
         cmd_kwargs = dict(cls._tao_command_default_args_)
         cmd_kwargs.update(**kwargs)
 
-        cmd = getattr(tao, cls._tao_command_)
+        cmd = getattr(tao, cls._tao_command_attr_)
         data = cmd(**cmd_kwargs)
         return cls(command_args=cmd_kwargs, **data)
 
@@ -158,6 +160,8 @@ class TaoSettableModel(TaoModel):
 
     # Do not set these keys if the values are 0, avoiding setting other things.
     _tao_skip_if_0_: ClassVar[tuple[str, ...]]
+    # The 'name' of `set name attr = value`.  If unset, uses `_tao_command_attr_`.
+    _tao_set_name_: ClassVar[str] = ""
 
     @property
     def settable_fields(self) -> list[str]:
@@ -194,6 +198,12 @@ class TaoSettableModel(TaoModel):
 
         return cmds
 
+    @staticmethod
+    def _make_set_value(value) -> str:
+        if isinstance(value, str) and not value:
+            return "''"
+        return str(value)
+
     def get_set_commands(self, tao: Tao | None = None):
         """
         Generate a list of set commands for attributes.
@@ -214,11 +224,13 @@ class TaoSettableModel(TaoModel):
         else:
             attrs = self._all_attributes_to_set
 
+        set_name = self._tao_set_name_ or self._tao_command_attr_
         for attr, index, value in attrs:
+            set_value = self._make_set_value(value)
             if index is None:
-                cmds.append(f"set {self._tao_command_} {attr} = {value}")
+                cmds.append(f"set {set_name} {attr} = {set_value}")
             else:
-                cmds.append(f"set {self._tao_command_} {attr}({index + 1}) = {value}")
+                cmds.append(f"set {set_name} {attr}({index + 1}) = {set_value}")
         return cmds
 
     @property

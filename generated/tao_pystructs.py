@@ -27,7 +27,7 @@ from typing_extensions import Self
 logger = logging.getLogger(__name__)
 
 
-def _sequence_helper(value):
+def _sequence_to_list(value):
     if isinstance(value, np.ndarray):
         return value.tolist()
     if isinstance(value, (int, float)):
@@ -92,8 +92,8 @@ def _check_equality(obj1: Any, obj2: Any) -> bool:
     return bool(obj1 == obj2)
 
 
-FloatSequence = Annotated[Sequence[float], pydantic.BeforeValidator(_sequence_helper)]
-IntSequence = Annotated[Sequence[int], pydantic.BeforeValidator(_sequence_helper)]
+FloatSequence = Annotated[Sequence[float], pydantic.BeforeValidator(_sequence_to_list)]
+IntSequence = Annotated[Sequence[int], pydantic.BeforeValidator(_sequence_to_list)]
 ArgumentType = int | float | str | IntSequence | FloatSequence
 
 
@@ -108,7 +108,9 @@ class TaoModel(
     A helper base class which allows for creating/updating an instance with Tao objects.
     """
 
-    _tao_command_: ClassVar[str]
+    # The `Tao.cmd_attr` command to query this information.
+    _tao_command_attr_: ClassVar[str]
+    # Default arguments to pass to `Tao.cmd_attr(**default_args)`
     _tao_command_default_args_: ClassVar[dict[str, Any]]
 
     command_args: dict[str, ArgumentType] = pydantic.Field(
@@ -136,7 +138,7 @@ class TaoModel(
         cmd_kwargs = dict(cls._tao_command_default_args_)
         cmd_kwargs.update(**kwargs)
 
-        cmd = getattr(tao, cls._tao_command_)
+        cmd = getattr(tao, cls._tao_command_attr_)
         data = cmd(**cmd_kwargs)
         return cls(command_args=cmd_kwargs, **data)
 
@@ -155,6 +157,8 @@ class TaoSettableModel(TaoModel):
 
     # Do not set these keys if the values are 0, avoiding setting other things.
     _tao_skip_if_0_: ClassVar[tuple[str, ...]]
+    # The 'name' of `set name attr = value`.  If unset, uses `_tao_command_attr_`.
+    _tao_set_name_: ClassVar[str] = ""
 
     @property
     def settable_fields(self) -> list[str]:
@@ -191,6 +195,12 @@ class TaoSettableModel(TaoModel):
 
         return cmds
 
+    @staticmethod
+    def _make_set_value(value) -> str:
+        if isinstance(value, str) and not value:
+            return "''"
+        return str(value)
+
     def get_set_commands(self, tao: Tao | None = None):
         """
         Generate a list of set commands for attributes.
@@ -211,11 +221,13 @@ class TaoSettableModel(TaoModel):
         else:
             attrs = self._all_attributes_to_set
 
+        set_name = self._tao_set_name_ or self._tao_command_attr_
         for attr, index, value in attrs:
+            set_value = self._make_set_value(value)
             if index is None:
-                cmds.append(f"set {self._tao_command_} {attr} = {value}")
+                cmds.append(f"set {set_name} {attr} = {set_value}")
             else:
-                cmds.append(f"set {self._tao_command_} {attr}({index + 1}) = {value}")
+                cmds.append(f"set {set_name} {attr}({index + 1}) = {set_value}")
         return cmds
 
     @property
@@ -416,7 +428,7 @@ class Beam(TaoSettableModel):
         Tracking start element.
     """
 
-    _tao_command_: ClassVar[str] = "beam"
+    _tao_command_attr_: ClassVar[str] = "beam"
     _tao_command_default_args_: ClassVar[dict[str, Any]] = {"ix_branch": 0, "ix_uni": 1}
     _tao_skip_if_0_: ClassVar[tuple[str, ...]] = ()
 
@@ -507,7 +519,7 @@ class BeamInit(TaoSettableModel):
         false, z describes the s distribution
     """
 
-    _tao_command_: ClassVar[str] = "beam_init"
+    _tao_command_attr_: ClassVar[str] = "beam_init"
     _tao_command_default_args_: ClassVar[dict[str, Any]] = {"ix_branch": 0, "ix_uni": 1}
     _tao_skip_if_0_: ClassVar[tuple[str, ...]] = ("a_emit", "b_emit", "a_norm_emit", "b_norm_emit")
 
@@ -668,7 +680,7 @@ class BmadCom(TaoSettableModel):
         Taylor order to use. 0 -> default = ptc_private%taylor_order_saved.
     """
 
-    _tao_command_: ClassVar[str] = "bmad_com"
+    _tao_command_attr_: ClassVar[str] = "bmad_com"
     _tao_command_default_args_: ClassVar[dict[str, Any]] = {}
     _tao_skip_if_0_: ClassVar[tuple[str, ...]] = ()
 
@@ -897,7 +909,7 @@ class ElementBunchParams(TaoModel):
     twiss_sigma_z : float
     """
 
-    _tao_command_: ClassVar[str] = "bunch_params"
+    _tao_command_attr_: ClassVar[str] = "bunch_params"
     _tao_command_default_args_: ClassVar[dict[str, Any]] = {}
 
     beam_saved: bool = Field(default=False)
@@ -1047,7 +1059,7 @@ class ElementChamberWall(TaoModel):
     z2_neg : float
     """
 
-    _tao_command_: ClassVar[str] = "ele_chamber_wall"
+    _tao_command_attr_: ClassVar[str] = "ele_chamber_wall"
     _tao_command_default_args_: ClassVar[dict[str, Any]] = {}
 
     longitudinal_position: float = ROField(default=0.0)
@@ -1085,7 +1097,7 @@ class ElementGridField(TaoModel):
         Field origin relative to ele_anchor_pt.
     """
 
-    _tao_command_: ClassVar[str] = "ele_grid_field"
+    _tao_command_attr_: ClassVar[str] = "ele_grid_field"
     _tao_command_default_args_: ClassVar[dict[str, Any]] = {}
 
     curved_ref_frame: bool = Field(default=False)
@@ -1125,7 +1137,7 @@ class ElementGridFieldPoints(TaoModel):
     k : int
     """
 
-    _tao_command_: ClassVar[str] = "ele_grid_field"
+    _tao_command_attr_: ClassVar[str] = "ele_grid_field"
     _tao_command_default_args_: ClassVar[dict[str, Any]] = {}
 
     data: FloatSequence = ROField(default_factory=list)
@@ -1185,7 +1197,7 @@ class ElementHead(TaoModel):
     universe : int
     """
 
-    _tao_command_: ClassVar[str] = "ele_head"
+    _tao_command_attr_: ClassVar[str] = "ele_head"
     _tao_command_default_args_: ClassVar[dict[str, Any]] = {}
 
     alias: str = Field(default="", description="Another name.")
@@ -1256,7 +1268,7 @@ class ElementLordSlave(TaoModel):
     type : str
     """
 
-    _tao_command_: ClassVar[str] = "ele_lord_slave"
+    _tao_command_attr_: ClassVar[str] = "ele_lord_slave"
     _tao_command_default_args_: ClassVar[dict[str, Any]] = {}
 
     key: str = ROField(default="")
@@ -1280,7 +1292,7 @@ class ElementMat6(TaoModel):
     data_6 : sequence of floats
     """
 
-    _tao_command_: ClassVar[str] = "ele_mat6"
+    _tao_command_attr_: ClassVar[str] = "ele_mat6"
     _tao_command_default_args_: ClassVar[dict[str, Any]] = {}
 
     data_1: FloatSequence = ROField(default_factory=list, max_length=6, attr="data_1", tao_name="1")
@@ -1300,7 +1312,7 @@ class ElementMat6Error(TaoModel):
     symplectic_error : float
     """
 
-    _tao_command_: ClassVar[str] = "ele_mat6"
+    _tao_command_attr_: ClassVar[str] = "ele_mat6"
     _tao_command_default_args_: ClassVar[dict[str, Any]] = {}
 
     symplectic_error: float = ROField(default=0.0)
@@ -1315,7 +1327,7 @@ class ElementMat6Vec0(TaoModel):
     vec0 : sequence of floats
     """
 
-    _tao_command_: ClassVar[str] = "ele_mat6"
+    _tao_command_attr_: ClassVar[str] = "ele_mat6"
     _tao_command_default_args_: ClassVar[dict[str, Any]] = {}
 
     vec0: FloatSequence = ROField(default_factory=list, max_length=6)
@@ -1336,7 +1348,7 @@ class ElementMultipoles_Data(TaoModel):
     tn_w_tilt : float
     """
 
-    _tao_command_: ClassVar[str] = "ele_multipoles"
+    _tao_command_attr_: ClassVar[str] = "ele_multipoles"
     _tao_command_default_args_: ClassVar[dict[str, Any]] = {}
 
     an_equiv: float = ROField(default=0.0, attr="an_equiv", tao_name="An (equiv)")
@@ -1363,7 +1375,7 @@ class ElementMultipoles(TaoModel):
         strength of the element?
     """
 
-    _tao_command_: ClassVar[str] = "ele_multipoles"
+    _tao_command_attr_: ClassVar[str] = "ele_multipoles"
     _tao_command_default_args_: ClassVar[dict[str, Any]] = {}
 
     data: Sequence[ElementMultipoles_Data] = ROField(
@@ -1395,7 +1407,7 @@ class ElementMultipolesAB_Data(TaoModel):
     tn_equiv : float
     """
 
-    _tao_command_: ClassVar[str] = "ele_multipoles"
+    _tao_command_attr_: ClassVar[str] = "ele_multipoles"
     _tao_command_default_args_: ClassVar[dict[str, Any]] = {}
 
     an: float = ROField(default=0.0, attr="an", tao_name="An")
@@ -1419,7 +1431,7 @@ class ElementMultipolesAB(TaoModel):
         For turning multipoles on/off
     """
 
-    _tao_command_: ClassVar[str] = "ele_multipoles"
+    _tao_command_attr_: ClassVar[str] = "ele_multipoles"
     _tao_command_default_args_: ClassVar[dict[str, Any]] = {}
 
     data: Sequence[ElementMultipolesAB_Data] = ROField(
@@ -1446,7 +1458,7 @@ class ElementMultipolesScaled_Data(TaoModel):
     tn_equiv : float
     """
 
-    _tao_command_: ClassVar[str] = "ele_multipoles"
+    _tao_command_attr_: ClassVar[str] = "ele_multipoles"
     _tao_command_default_args_: ClassVar[dict[str, Any]] = {}
 
     an: float = ROField(default=0.0, attr="an", tao_name="An")
@@ -1475,7 +1487,7 @@ class ElementMultipolesScaled(TaoModel):
         strength of the element?
     """
 
-    _tao_command_: ClassVar[str] = "ele_multipoles"
+    _tao_command_attr_: ClassVar[str] = "ele_multipoles"
     _tao_command_default_args_: ClassVar[dict[str, Any]] = {}
 
     data: Sequence[ElementMultipolesScaled_Data] = ROField(
@@ -1539,7 +1551,7 @@ class ElementOrbit(TaoModel):
     z : float
     """
 
-    _tao_command_: ClassVar[str] = "ele_orbit"
+    _tao_command_attr_: ClassVar[str] = "ele_orbit"
     _tao_command_default_args_: ClassVar[dict[str, Any]] = {}
 
     beta: float = ROField(default=-1.0, description="Velocity / c_light.")
@@ -1610,7 +1622,7 @@ class ElementPhotonBase(TaoModel):
     has_pixel : bool
     """
 
-    _tao_command_: ClassVar[str] = "ele_photon"
+    _tao_command_attr_: ClassVar[str] = "ele_photon"
     _tao_command_default_args_: ClassVar[dict[str, Any]] = {}
 
     has_material: bool = ROField(default=False, attr="has_material", tao_name="has#material")
@@ -1634,7 +1646,7 @@ class ElementPhotonCurvature(TaoModel):
     xy_6 : sequence of floats
     """
 
-    _tao_command_: ClassVar[str] = "ele_photon"
+    _tao_command_attr_: ClassVar[str] = "ele_photon"
     _tao_command_default_args_: ClassVar[dict[str, Any]] = {}
 
     elliptical_curvature: FloatSequence = Field(default_factory=list, max_length=3)
@@ -1661,7 +1673,7 @@ class ElementPhotonMaterial(TaoModel):
     sqrt_f_h_f_hbar : complex
     """
 
-    _tao_command_: ClassVar[str] = "ele_photon"
+    _tao_command_attr_: ClassVar[str] = "ele_photon"
     _tao_command_default_args_: ClassVar[dict[str, Any]] = {}
 
     f0_m1: complex | None = ROField(default=None, attr="f0_m1", tao_name="F0_m1")
@@ -1698,7 +1710,7 @@ class ElementTwiss(TaoModel):
     phi_b : float
     """
 
-    _tao_command_: ClassVar[str] = "ele_twiss"
+    _tao_command_attr_: ClassVar[str] = "ele_twiss"
     _tao_command_default_args_: ClassVar[dict[str, Any]] = {}
 
     alpha_a: float = ROField(default=0.0)
@@ -1747,7 +1759,7 @@ class ElementWakeBase(TaoModel):
         z-distance scale factor.
     """
 
-    _tao_command_: ClassVar[str] = "ele_wake"
+    _tao_command_attr_: ClassVar[str] = "ele_wake"
     _tao_command_default_args_: ClassVar[dict[str, Any]] = {}
 
     has_lr_mode: bool = ROField(default=False, attr="has_lr_mode", tao_name="has#lr_mode")
@@ -1812,7 +1824,7 @@ class ElementWakeSrLong(TaoModel):
     z_ref : float
     """
 
-    _tao_command_: ClassVar[str] = "ele_wake"
+    _tao_command_attr_: ClassVar[str] = "ele_wake"
     _tao_command_default_args_: ClassVar[dict[str, Any]] = {}
 
     z_ref: float = Field(default=0.0)
@@ -1827,7 +1839,7 @@ class ElementWakeSrTrans(TaoModel):
     z_ref : float
     """
 
-    _tao_command_: ClassVar[str] = "ele_wake"
+    _tao_command_attr_: ClassVar[str] = "ele_wake"
     _tao_command_default_args_: ClassVar[dict[str, Any]] = {}
 
     z_ref: float = Field(default=0.0)
@@ -1851,7 +1863,7 @@ class ElementWall3DBase(TaoModel):
         Material thickness.
     """
 
-    _tao_command_: ClassVar[str] = "ele_wall3d"
+    _tao_command_attr_: ClassVar[str] = "ele_wall3d"
     _tao_command_default_args_: ClassVar[dict[str, Any]] = {}
 
     clear_material: str | None = Field(default=None)
@@ -1878,7 +1890,7 @@ class ElementWall3DTable_Data(TaoModel):
     y : float
     """
 
-    _tao_command_: ClassVar[str] = "ele_wall3d"
+    _tao_command_attr_: ClassVar[str] = "ele_wall3d"
     _tao_command_default_args_: ClassVar[dict[str, Any]] = {}
 
     j: int = ROField(default=0)
@@ -1907,7 +1919,7 @@ class ElementWall3DTable(TaoModel):
     wall3d_section_type : str
     """
 
-    _tao_command_: ClassVar[str] = "ele_wall3d"
+    _tao_command_attr_: ClassVar[str] = "ele_wall3d"
     _tao_command_default_args_: ClassVar[dict[str, Any]] = {}
 
     data: Sequence[ElementWall3DTable_Data] = ROField(
@@ -1970,7 +1982,7 @@ class SpaceChargeCom(TaoSettableModel):
         Gird size for fft_3d space charge calc.
     """
 
-    _tao_command_: ClassVar[str] = "space_charge_com"
+    _tao_command_attr_: ClassVar[str] = "space_charge_com"
     _tao_command_default_args_: ClassVar[dict[str, Any]] = {}
     _tao_skip_if_0_: ClassVar[tuple[str, ...]] = ()
 
@@ -2125,7 +2137,8 @@ class TaoGlobal(TaoSettableModel):
         For use with a python GUI.
     """
 
-    _tao_command_: ClassVar[str] = "tao_global"
+    _tao_command_attr_: ClassVar[str] = "tao_global"
+    _tao_set_name_: ClassVar[str] = "global"
     _tao_command_default_args_: ClassVar[dict[str, Any]] = {}
     _tao_skip_if_0_: ClassVar[tuple[str, ...]] = ()
 
