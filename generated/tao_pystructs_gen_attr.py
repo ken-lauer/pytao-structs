@@ -19,14 +19,69 @@ from typing import (
 
 import numpy as np
 import pydantic
-from genesis.version4.types import _check_equality
 from pytao import Tao
 from rich.pretty import pretty_repr
 from typing_extensions import Self
 
 # TODO: this code is partly duplicated with TaoSettableModel; refactor
-# TODO: reduce reliance on [internal-ish] lume-genesis API (genesis.version4.types._check_equality)
 logger = logging.getLogger(__name__)
+
+
+def _check_equality(obj1: Any, obj2: Any) -> bool:
+    """
+    Check equality of `obj1` and `obj2`.`
+
+    Parameters
+    ----------
+    obj1 : Any
+    obj2 : Any
+
+    Returns
+    -------
+    bool
+    """
+    # TODO: borrowed from lume-genesis; put this in a reusable spot
+    if not isinstance(obj1, type(obj2)):
+        return False
+
+    if isinstance(obj1, pydantic.BaseModel):
+        return all(
+            _check_equality(
+                getattr(obj1, attr),
+                getattr(obj2, attr),
+            )
+            for attr, fld in obj1.model_fields.items()
+            if not fld.exclude
+        )
+
+    if isinstance(obj1, dict):
+        if set(obj1) != set(obj2):
+            return False
+
+        return all(
+            _check_equality(
+                obj1[key],
+                obj2[key],
+            )
+            for key in obj1
+        )
+
+    if isinstance(obj1, (list, tuple)):
+        if len(obj1) != len(obj2):
+            return False
+        return all(
+            _check_equality(obj1_value, obj2_value) for obj1_value, obj2_value in zip(obj1, obj2)
+        )
+
+    if isinstance(obj1, np.ndarray):
+        if not obj1.shape and not obj2.shape:
+            return True
+        return np.allclose(obj1, obj2)
+
+    if isinstance(obj1, float):
+        return np.allclose(obj1, obj2)
+
+    return bool(obj1 == obj2)
 
 
 class TaoAttributesModel(
@@ -530,6 +585,7 @@ class BeamBeamAttributes(TaoAttributesModel):
     crab_x3 : float
     crab_x4 : float
     crab_x5 : float
+    crossing_time : float
     delta_ref_time : float
     e_tot : float
     e_tot_strong : float
@@ -540,6 +596,7 @@ class BeamBeamAttributes(TaoAttributesModel):
     n_slice : int
     offset_moves_aperture : bool
     p0c : float
+    pc_strong : float
     ref_time_start : float
     repetition_frequency : float
     s_twiss_ref : float
@@ -564,7 +621,6 @@ class BeamBeamAttributes(TaoAttributesModel):
     y_offset_tot : float
     y_pitch : float
     y_pitch_tot : float
-    z_crossing : float
     z_offset : float
     z_offset_tot : float
     """
@@ -591,6 +647,7 @@ class BeamBeamAttributes(TaoAttributesModel):
     crab_x3: float = ROField(default=0.0, attr="crab_x3", tao_name="CRAB_X3")
     crab_x4: float = ROField(default=0.0, attr="crab_x4", tao_name="CRAB_X4")
     crab_x5: float = ROField(default=0.0, attr="crab_x5", tao_name="CRAB_X5")
+    crossing_time: float = ROField(default=0.0, attr="crossing_time", tao_name="CROSSING_TIME")
     delta_ref_time: float = ROField(default=0.0, attr="delta_ref_time", tao_name="DELTA_REF_TIME")
     e_tot: float = ROField(default=0.0, attr="e_tot", tao_name="E_TOT")
     e_tot_strong: float = ROField(default=0.0, attr="e_tot_strong", tao_name="E_TOT_STRONG")
@@ -601,6 +658,7 @@ class BeamBeamAttributes(TaoAttributesModel):
     n_slice: int = ROField(default=0, attr="n_slice", tao_name="N_SLICE")
     offset_moves_aperture: bool = Field(default=False)
     p0c: float = ROField(default=0.0, attr="p0c", tao_name="P0C")
+    pc_strong: float = ROField(default=0.0, attr="pc_strong", tao_name="PC_STRONG")
     ref_time_start: float = ROField(default=0.0, attr="ref_time_start", tao_name="REF_TIME_START")
     repetition_frequency: float = ROField(
         default=0.0, attr="repetition_frequency", tao_name="REPETITION_FREQUENCY"
@@ -628,7 +686,6 @@ class BeamBeamAttributes(TaoAttributesModel):
     y_offset_tot: float = ROField(default=0.0, attr="y_offset_tot", tao_name="Y_OFFSET_TOT")
     y_pitch: float = ROField(default=0.0, attr="y_pitch", tao_name="Y_PITCH")
     y_pitch_tot: float = ROField(default=0.0, attr="y_pitch_tot", tao_name="Y_PITCH_TOT")
-    z_crossing: float = ROField(default=0.0, attr="z_crossing", tao_name="Z_CROSSING")
     z_offset: float = ROField(default=0.0, attr="z_offset", tao_name="Z_OFFSET")
     z_offset_tot: float = ROField(default=0.0, attr="z_offset_tot", tao_name="Z_OFFSET_TOT")
 
@@ -707,6 +764,7 @@ class Crab_CavityAttributes(TaoAttributesModel):
     lord_pad1 : float
     lord_pad2 : float
     lord_status : str
+    n_rf_steps : int
     num_steps : int
     offset_moves_aperture : bool
     p0c : float
@@ -760,6 +818,7 @@ class Crab_CavityAttributes(TaoAttributesModel):
     lord_pad1: float = ROField(default=0.0, attr="lord_pad1", tao_name="LORD_PAD1")
     lord_pad2: float = ROField(default=0.0, attr="lord_pad2", tao_name="LORD_PAD2")
     lord_status: str = ROField(default="")
+    n_rf_steps: int = ROField(default=0, attr="n_rf_steps", tao_name="N_RF_STEPS")
     num_steps: int = ROField(default=0, attr="num_steps", tao_name="NUM_STEPS")
     offset_moves_aperture: bool = Field(default=False)
     p0c: float = ROField(default=0.0, attr="p0c", tao_name="P0C")
@@ -2337,6 +2396,7 @@ class LcavityAttributes(TaoAttributesModel):
     autoscale_phase : bool
     bl_hkick : float
     bl_vkick : float
+    bs_field : float
     cavity_type : str
     coupler_angle : float
     coupler_at : str
@@ -2357,6 +2417,7 @@ class LcavityAttributes(TaoAttributesModel):
     gradient_tot : float
     hkick : float
     integrator_order : int
+    ks : float
     L : float
     l_active : float
     longitudinal_mode : int
@@ -2364,6 +2425,7 @@ class LcavityAttributes(TaoAttributesModel):
     lord_pad2 : float
     lord_status : str
     n_cell : int
+    n_rf_steps : int
     num_steps : int
     offset_moves_aperture : bool
     p0c : float
@@ -2415,6 +2477,7 @@ class LcavityAttributes(TaoAttributesModel):
     )
     bl_hkick: float = ROField(default=0.0, attr="bl_hkick", tao_name="BL_HKICK")
     bl_vkick: float = ROField(default=0.0, attr="bl_vkick", tao_name="BL_VKICK")
+    bs_field: float = ROField(default=0.0, attr="bs_field", tao_name="BS_FIELD")
     cavity_type: str = ROField(default="", attr="cavity_type", tao_name="CAVITY_TYPE")
     coupler_angle: float = ROField(default=0.0, attr="coupler_angle", tao_name="COUPLER_ANGLE")
     coupler_at: str = ROField(default="", attr="coupler_at", tao_name="COUPLER_AT")
@@ -2439,6 +2502,7 @@ class LcavityAttributes(TaoAttributesModel):
     gradient_tot: float = ROField(default=0.0, attr="gradient_tot", tao_name="GRADIENT_TOT")
     hkick: float = ROField(default=0.0, attr="hkick", tao_name="HKICK")
     integrator_order: int = ROField(default=0, attr="integrator_order", tao_name="INTEGRATOR_ORDER")
+    ks: float = ROField(default=0.0, attr="ks", tao_name="KS")
     L: float = ROField(default=0.0)
     l_active: float = ROField(default=0.0, attr="l_active", tao_name="L_ACTIVE")
     longitudinal_mode: int = ROField(
@@ -2448,6 +2512,7 @@ class LcavityAttributes(TaoAttributesModel):
     lord_pad2: float = ROField(default=0.0, attr="lord_pad2", tao_name="LORD_PAD2")
     lord_status: str = ROField(default="")
     n_cell: int = ROField(default=0, attr="n_cell", tao_name="N_CELL")
+    n_rf_steps: int = ROField(default=0, attr="n_rf_steps", tao_name="N_RF_STEPS")
     num_steps: int = ROField(default=0, attr="num_steps", tao_name="NUM_STEPS")
     offset_moves_aperture: bool = Field(default=False)
     p0c: float = ROField(default=0.0, attr="p0c", tao_name="P0C")
@@ -3959,6 +4024,7 @@ class RFCavityAttributes(TaoAttributesModel):
     lord_pad2 : float
     lord_status : str
     n_cell : int
+    n_rf_steps : int
     num_steps : int
     offset_moves_aperture : bool
     p0c : float
@@ -4036,6 +4102,7 @@ class RFCavityAttributes(TaoAttributesModel):
     lord_pad2: float = ROField(default=0.0, attr="lord_pad2", tao_name="LORD_PAD2")
     lord_status: str = ROField(default="")
     n_cell: int = ROField(default=0, attr="n_cell", tao_name="N_CELL")
+    n_rf_steps: int = ROField(default=0, attr="n_rf_steps", tao_name="N_RF_STEPS")
     num_steps: int = ROField(default=0, attr="num_steps", tao_name="NUM_STEPS")
     offset_moves_aperture: bool = Field(default=False)
     p0c: float = ROField(default=0.0, attr="p0c", tao_name="P0C")

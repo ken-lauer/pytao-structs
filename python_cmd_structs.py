@@ -615,6 +615,7 @@ class PipeOutputStructure(pydantic.BaseModel):
         mark_optional: Iterable[str] = (),
         mark_empty_lists: Iterable[str] = (),
         skip_prefixes: Iterable[str] = (),
+        tao_command_attr_name: str | None = None,
         **kwargs,
     ):
         optional = set(mark_optional)
@@ -703,6 +704,10 @@ class PipeOutputStructure(pydantic.BaseModel):
                 f"Missing optional key(s) in source example: {missing_optional_keys}"
             )
 
+        if tao_command_attr_name:
+            tao_command = tao_command_attr_name
+        else:
+            tao_command = cmd.cmd.split()[0].replace(":", "_") if cmd else ""
         return cls(
             cmd=cmd,
             class_name=class_name,
@@ -710,7 +715,7 @@ class PipeOutputStructure(pydantic.BaseModel):
             members=members,
             full_path=full_path,
             path=path,
-            tao_command=cmd.cmd.split()[0].replace(":", "_") if cmd else "",
+            tao_command=tao_command,
             **kwargs,
         )
 
@@ -1132,6 +1137,8 @@ def generate_structures():
         TaoCommandAndResult.from_tao(tao, "global"),
         class_name="TaoGlobal",
         reference_classes=(structs_by_name["tao_global_struct"],),
+        base_class="TaoSettableModel",
+        tao_command_attr_name="tao_global",
         mark_optional={},
     )
 

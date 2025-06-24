@@ -20,12 +20,10 @@ from typing import (
 
 import numpy as np
 import pydantic
-from genesis.version4.types import _check_equality
 from pytao import Tao
 from rich.pretty import pretty_repr
 from typing_extensions import Self
 
-# TODO: reduce reliance on [internal-ish] lume-genesis API (genesis.version4.types._check_equality)
 logger = logging.getLogger(__name__)
 
 
@@ -35,6 +33,63 @@ def _sequence_helper(value):
     if isinstance(value, (int, float)):
         return [value]
     return list(value)
+
+
+def _check_equality(obj1: Any, obj2: Any) -> bool:
+    """
+    Check equality of `obj1` and `obj2`.`
+
+    Parameters
+    ----------
+    obj1 : Any
+    obj2 : Any
+
+    Returns
+    -------
+    bool
+    """
+    # TODO: borrowed from lume-genesis; put this in a reusable spot
+    if not isinstance(obj1, type(obj2)):
+        return False
+
+    if isinstance(obj1, pydantic.BaseModel):
+        return all(
+            _check_equality(
+                getattr(obj1, attr),
+                getattr(obj2, attr),
+            )
+            for attr, fld in obj1.model_fields.items()
+            if not fld.exclude
+        )
+
+    if isinstance(obj1, dict):
+        if set(obj1) != set(obj2):
+            return False
+
+        return all(
+            _check_equality(
+                obj1[key],
+                obj2[key],
+            )
+            for key in obj1
+        )
+
+    if isinstance(obj1, (list, tuple)):
+        if len(obj1) != len(obj2):
+            return False
+        return all(
+            _check_equality(obj1_value, obj2_value) for obj1_value, obj2_value in zip(obj1, obj2)
+        )
+
+    if isinstance(obj1, np.ndarray):
+        if not obj1.shape and not obj2.shape:
+            return True
+        return np.allclose(obj1, obj2)
+
+    if isinstance(obj1, float):
+        return np.allclose(obj1, obj2)
+
+    return bool(obj1 == obj2)
 
 
 FloatSequence = Annotated[Sequence[float], pydantic.BeforeValidator(_sequence_helper)]
@@ -444,7 +499,7 @@ class BeamInit(TaoSettableModel):
     t_offset : float
         Time center offset
     use_particle_start : bool
-        Use lat%particle_start instead of beam_init%center, %spin?
+        Use lat%particle_start instead of beam_init%center, %t_offset, and %spin?
     use_t_coords : bool
         If true, the distributions will be taken as in t-coordinates
     use_z_as_t : bool
@@ -515,7 +570,8 @@ class BeamInit(TaoSettableModel):
     spin: FloatSequence = Field(default=[0.0, 0.0, 0.0], max_length=3, description="Spin (x, y, z)")
     t_offset: float = Field(default=0.0, description="Time center offset")
     use_particle_start: bool = Field(
-        default=False, description="Use lat%particle_start instead of beam_init%center, %spin?"
+        default=False,
+        description="Use lat%particle_start instead of beam_init%center, %t_offset, and %spin?",
     )
     use_t_coords: bool = Field(
         default=False, description="If true, the distributions will be taken as in t-coordinates"
@@ -542,7 +598,7 @@ class BmadCom(TaoSettableModel):
     absolute_time_tracking : bool
         Absolute or relative time tracking?
     aperture_limit_on : bool
-        use apertures in tracking?
+        Use apertures in tracking?
     auto_bookkeeper : bool
         Automatic bookkeeping?
     autoscale_amp_abs_tol : float
@@ -623,7 +679,7 @@ class BmadCom(TaoSettableModel):
     absolute_time_tracking: bool = Field(
         default=False, description="Absolute or relative time tracking?"
     )
-    aperture_limit_on: bool = Field(default=True, description="use apertures in tracking?")
+    aperture_limit_on: bool = Field(default=True, description="Use apertures in tracking?")
     auto_bookkeeper: bool = Field(default=True, description="Automatic bookkeeping?")
     autoscale_amp_abs_tol: float = Field(
         default=0.1, description="Autoscale absolute amplitude tolerance (eV)."
@@ -1167,8 +1223,7 @@ class ElementHead(TaoModel):
     ix_ele: int = ROField(
         default=-1,
         description=(
-            "Index in branch ele(0:) array. Set to ix_slice_slave$ = -2 for "
-            "slice_slave$ elements."
+            "Index in branch ele(0:) array. Set to ix_slice_slave$ = -2 for slice_slave$ elements."
         ),
     )
     key: str = ROField(default=0, description="Element class (quadrupole, etc.).")
@@ -1465,8 +1520,7 @@ class ElementOrbit(TaoModel):
         For non-photons: Reference momentum. For photons: Photon momentum (not
         reference).
     phase : sequence of floats
-        Photon E-field phase (x,y). phase(1) is also used with RF-time tracking to
-        record the number of RF cycles.
+        Photon E-field phase (x,y).
     px : float
     py : float
     pz : float
@@ -1479,8 +1533,7 @@ class ElementOrbit(TaoModel):
     state : str
         alive$, lost$, lost_neg_x_aperture$, lost_pz$, etc.
     t : float
-        Absolute time (not relative to reference). If bmad_private%rf_clock_frequency
-        is set, %t will be the RF clock time in the range [0, 1/rf_clock_freq]
+        Absolute time (not relative to reference). Note: Quad precision!
     x : float
     y : float
     z : float
@@ -1507,8 +1560,7 @@ class ElementOrbit(TaoModel):
     dt_ref: float = ROField(
         default=0.0,
         description=(
-            "Used in: * time tracking for computing z. * by coherent photons = "
-            "path_length/c_light."
+            "Used in: * time tracking for computing z. * by coherent photons = path_length/c_light."
         ),
     )
     field: FloatSequence = ROField(
@@ -1525,16 +1577,11 @@ class ElementOrbit(TaoModel):
     p0c: float = ROField(
         default=0.0,
         description=(
-            "For non-photons: Reference momentum. For photons: Photon momentum (not " "reference)."
+            "For non-photons: Reference momentum. For photons: Photon momentum (not reference)."
         ),
     )
     phase: FloatSequence = ROField(
-        default=[0.0, 0.0],
-        max_length=2,
-        description=(
-            "Photon E-field phase (x,y). phase(1) is also used with RF-time tracking to "
-            "record the number of RF cycles."
-        ),
+        default=[0.0, 0.0], max_length=2, description="Photon E-field phase (x,y)."
     )
     px: float = ROField(default=0.0)
     py: float = ROField(default=0.0)
@@ -1546,12 +1593,7 @@ class ElementOrbit(TaoModel):
         default="", description="alive$, lost$, lost_neg_x_aperture$, lost_pz$, etc."
     )
     t: float = ROField(
-        default=0.0,
-        description=(
-            "Absolute time (not relative to reference). If "
-            "bmad_private%rf_clock_frequency is set, %t will be the RF clock time in "
-            "the range [0, 1/rf_clock_freq]"
-        ),
+        default=0.0, description="Absolute time (not relative to reference). Note: Quad precision!"
     )
     x: float = ROField(default=0.0)
     y: float = ROField(default=0.0)
@@ -1876,8 +1918,7 @@ class ElementWall3DTable(TaoModel):
         default=[0.0, 0.0],
         max_length=2,
         description=(
-            "Center of section Section-to-section spline interpolation of the center of "
-            "the section"
+            "Center of section Section-to-section spline interpolation of the center of the section"
         ),
     )
     s: float = Field(default=0.0, description="Longitudinal position")
@@ -1973,7 +2014,7 @@ class SpaceChargeCom(TaoSettableModel):
     )
 
 
-class TaoGlobal(TaoModel):
+class TaoGlobal(TaoSettableModel):
     """
     Structure which corresponds to Tao `pipe global`, for example.
 
@@ -2084,8 +2125,9 @@ class TaoGlobal(TaoModel):
         For use with a python GUI.
     """
 
-    _tao_command_: ClassVar[str] = "global"
+    _tao_command_: ClassVar[str] = "tao_global"
     _tao_command_default_args_: ClassVar[dict[str, Any]] = {}
+    _tao_skip_if_0_: ClassVar[tuple[str, ...]] = ()
 
     beam_timer_on: bool = Field(
         default=False, description="For timing the beam tracking calculation."
@@ -2165,8 +2207,7 @@ class TaoGlobal(TaoModel):
     srdt_use_cache: bool = Field(
         default=True,
         description=(
-            "Create cache for SRDT calculations.  Can use lots of memory if "
-            "srdt_*_n_slices large."
+            "Create cache for SRDT calculations.  Can use lots of memory if srdt_*_n_slices large."
         ),
     )
     stop_on_error: bool = Field(

@@ -22,13 +22,11 @@ from typing import (
 import numpy as np
 import pydantic
 
-from genesis.version4.types import _check_equality
 from pytao import Tao
 from rich.pretty import pretty_repr
 from typing_extensions import Self
 
 
-# TODO: reduce reliance on [internal-ish] lume-genesis API (genesis.version4.types._check_equality)
 logger = logging.getLogger(__name__)
 
 
@@ -38,6 +36,63 @@ def _sequence_helper(value):
     if isinstance(value, (int, float)):
         return [value]
     return list(value)
+
+
+def _check_equality(obj1: Any, obj2: Any) -> bool:
+    """
+    Check equality of `obj1` and `obj2`.`
+
+    Parameters
+    ----------
+    obj1 : Any
+    obj2 : Any
+
+    Returns
+    -------
+    bool
+    """
+    # TODO: borrowed from lume-genesis; put this in a reusable spot
+    if not isinstance(obj1, type(obj2)):
+        return False
+
+    if isinstance(obj1, pydantic.BaseModel):
+        return all(
+            _check_equality(
+                getattr(obj1, attr),
+                getattr(obj2, attr),
+            )
+            for attr, fld in obj1.model_fields.items()
+            if not fld.exclude
+        )
+
+    if isinstance(obj1, dict):
+        if set(obj1) != set(obj2):
+            return False
+
+        return all(
+            _check_equality(
+                obj1[key],
+                obj2[key],
+            )
+            for key in obj1
+        )
+
+    if isinstance(obj1, (list, tuple)):
+        if len(obj1) != len(obj2):
+            return False
+        return all(
+            _check_equality(obj1_value, obj2_value) for obj1_value, obj2_value in zip(obj1, obj2)
+        )
+
+    if isinstance(obj1, np.ndarray):
+        if not obj1.shape and not obj2.shape:
+            return True
+        return np.allclose(obj1, obj2)
+
+    if isinstance(obj1, float):
+        return np.allclose(obj1, obj2)
+
+    return bool(obj1 == obj2)
 
 
 FloatSequence = Annotated[Sequence[float], pydantic.BeforeValidator(_sequence_helper)]
