@@ -607,6 +607,8 @@ class BmadCom(TaoSettableModel):
         Runge-Kutta tracking absolute tolerance.
     abs_tol_tracking : float
         Closed orbit absolute tolerance.
+    absolute_time_ref_shift : bool
+        Apply reference time shift when using absolute time tracking?
     absolute_time_tracking : bool
         Absolute or relative time tracking?
     aperture_limit_on : bool
@@ -648,10 +650,14 @@ class BmadCom(TaoSettableModel):
         Maximum number of RK steps before particle is considered lost.
     min_ds_adaptive_tracking : float
         Min step size to take.
+    normalize_twiss : bool
+        Normalize matrix when computing Twiss for off-energy ref?
     radiation_damping_on : bool
         Radiation damping toggle.
     radiation_fluctuations_on : bool
         Radiation fluctuations toggle.
+    radiation_zero_average : bool
+        Shift damping to be zero on the zero orbit to get rid of sawtooth?
     rel_tol_adaptive_tracking : float
         Runge-Kutta tracking relative tolerance.
     rel_tol_tracking : float
@@ -668,6 +674,8 @@ class BmadCom(TaoSettableModel):
         Used in sad_mult step length calc.
     significant_length : float
         meter
+    spin_n0_direction_user_set : bool
+        User sets direction of n0 for closed geometry branches?
     spin_sokolov_ternov_flipping_on : bool
         Spin flipping during synchrotron radiation emission?
     spin_tracking_on : bool
@@ -688,6 +696,9 @@ class BmadCom(TaoSettableModel):
         default=1e-10, description="Runge-Kutta tracking absolute tolerance."
     )
     abs_tol_tracking: float = Field(default=1e-12, description="Closed orbit absolute tolerance.")
+    absolute_time_ref_shift: bool = Field(
+        default=True, description="Apply reference time shift when using absolute time tracking?"
+    )
     absolute_time_tracking: bool = Field(
         default=False, description="Absolute or relative time tracking?"
     )
@@ -734,9 +745,16 @@ class BmadCom(TaoSettableModel):
         default=10000, description="Maximum number of RK steps before particle is considered lost."
     )
     min_ds_adaptive_tracking: float = Field(default=0.0, description="Min step size to take.")
+    normalize_twiss: bool = Field(
+        default=False, description="Normalize matrix when computing Twiss for off-energy ref?"
+    )
     radiation_damping_on: bool = Field(default=False, description="Radiation damping toggle.")
     radiation_fluctuations_on: bool = Field(
         default=False, description="Radiation fluctuations toggle."
+    )
+    radiation_zero_average: bool = Field(
+        default=False,
+        description="Shift damping to be zero on the zero orbit to get rid of sawtooth?",
     )
     rel_tol_adaptive_tracking: float = Field(
         default=1e-08, description="Runge-Kutta tracking relative tolerance."
@@ -750,6 +768,9 @@ class BmadCom(TaoSettableModel):
     sad_eps_scale: float = Field(default=0.005, description="Used in sad_mult step length calc.")
     sad_n_div_max: int = Field(default=1000, description="Used in sad_mult step length calc.")
     significant_length: float = Field(default=1e-10, description="meter")
+    spin_n0_direction_user_set: bool = Field(
+        default=False, description="User sets direction of n0 for closed geometry branches?"
+    )
     spin_sokolov_ternov_flipping_on: bool = Field(
         default=False, description="Spin flipping during synchrotron radiation emission?"
     )
