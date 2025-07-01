@@ -9,6 +9,7 @@ from __future__ import annotations
 import contextlib
 import functools
 import logging
+import re
 import textwrap
 from typing import (
     Annotated,
@@ -201,15 +202,18 @@ class TaoSettableModel(TaoModel):
             return "''"
         return str(value)
 
-    def get_set_commands(self, tao: Tao | None = None):
+    def get_set_commands(self, tao: Tao | None = None) -> list[str]:
         """
-        Generate a list of set commands for attributes.
+        Generate a list of set commands to apply this configuration to `tao`.
 
         Parameters
         ----------
         tao : Tao or None, optional
-            An instance of the Tao class, if provided. If `None`, all attributes
-            to be set will be used.
+            An instance of the Tao class.
+            If provided, only differing
+            configuration parameters will be included in the list of set
+            commands.
+            If `None`, all attributes to be set will be used.
 
         Returns
         -------
@@ -250,6 +254,7 @@ class TaoSettableModel(TaoModel):
         suppress_plotting: bool = True,
         suppress_lattice_calc: bool = True,
         log: str = "DEBUG",
+        exclude_matches: list[str] | None = None,
     ) -> bool:
         """
         Apply this configuration to Tao.
@@ -284,15 +289,21 @@ class TaoSettableModel(TaoModel):
         plot_on = tao_global["plot_on"]
         lat_calc_on = tao_global["lattice_calc_on"]
 
+        exclude_matches = list(exclude_matches or [])
+
         if suppress_plotting and plot_on:
             tao.cmd("set global plot_on = F")
         if suppress_lattice_calc and lat_calc_on:
             tao.cmd("set global lattice_calc_on = F")
 
+        exclude = [re.compile(line, flags=re.IGNORECASE) for line in exclude_matches]
+
         log_level: int = getattr(logging, log.upper())
 
         try:
             for cmd in self.get_set_commands(tao=tao if only_changed else None):
+                if any(regex.match(cmd) for regex in exclude):
+                    continue
                 try:
                     logger.log(log_level, f"Tao> {cmd}")
                     for line in tao.cmd(cmd):
@@ -1256,7 +1267,8 @@ class ElementHead(TaoModel):
     ix_ele: int = ROField(
         default=-1,
         description=(
-            "Index in branch ele(0:) array. Set to ix_slice_slave$ = -2 for slice_slave$ elements."
+            "Index in branch ele(0:) array. Set to ix_slice_slave$ = -2 for "
+            "slice_slave$ elements."
         ),
     )
     key: str = ROField(default=0, description="Element class (quadrupole, etc.).")
@@ -1593,7 +1605,8 @@ class ElementOrbit(TaoModel):
     dt_ref: float = ROField(
         default=0.0,
         description=(
-            "Used in: * time tracking for computing z. * by coherent photons = path_length/c_light."
+            "Used in: * time tracking for computing z. * by coherent photons = "
+            "path_length/c_light."
         ),
     )
     field: FloatSequence = ROField(
@@ -1610,7 +1623,7 @@ class ElementOrbit(TaoModel):
     p0c: float = ROField(
         default=0.0,
         description=(
-            "For non-photons: Reference momentum. For photons: Photon momentum (not reference)."
+            "For non-photons: Reference momentum. For photons: Photon momentum (not " "reference)."
         ),
     )
     phase: FloatSequence = ROField(
@@ -1951,7 +1964,8 @@ class ElementWall3DTable(TaoModel):
         default=[0.0, 0.0],
         max_length=2,
         description=(
-            "Center of section Section-to-section spline interpolation of the center of the section"
+            "Center of section Section-to-section spline interpolation of the center of "
+            "the section"
         ),
     )
     s: float = Field(default=0.0, description="Longitudinal position")
@@ -2241,7 +2255,8 @@ class TaoGlobal(TaoSettableModel):
     srdt_use_cache: bool = Field(
         default=True,
         description=(
-            "Create cache for SRDT calculations.  Can use lots of memory if srdt_*_n_slices large."
+            "Create cache for SRDT calculations.  Can use lots of memory if "
+            "srdt_*_n_slices large."
         ),
     )
     stop_on_error: bool = Field(

@@ -194,6 +194,22 @@ class TaoAttributesModel(
         return cmds
 
     def get_set_commands(self, tao: Tao | None = None) -> list[str]:
+        """
+        Generate a list of set commands to apply this configuration to `tao`.
+
+        Parameters
+        ----------
+        tao : Tao or None, optional
+            An instance of the Tao class.
+            If provided, only differing
+            configuration parameters will be included in the list of set
+            commands.
+            If `None`, all attributes to be set will be used.
+
+        Returns
+        -------
+        cmds : list of str
+        """
         cmds = []
 
         try:

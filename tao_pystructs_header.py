@@ -9,6 +9,7 @@ from __future__ import annotations
 import contextlib
 import functools  # noqa: F401
 import logging
+import re
 import textwrap
 from typing import (
     cast,
@@ -204,15 +205,18 @@ class TaoSettableModel(TaoModel):
             return "''"
         return str(value)
 
-    def get_set_commands(self, tao: Tao | None = None):
+    def get_set_commands(self, tao: Tao | None = None) -> list[str]:
         """
-        Generate a list of set commands for attributes.
+        Generate a list of set commands to apply this configuration to `tao`.
 
         Parameters
         ----------
         tao : Tao or None, optional
-            An instance of the Tao class, if provided. If `None`, all attributes
-            to be set will be used.
+            An instance of the Tao class.
+            If provided, only differing
+            configuration parameters will be included in the list of set
+            commands.
+            If `None`, all attributes to be set will be used.
 
         Returns
         -------
@@ -253,6 +257,7 @@ class TaoSettableModel(TaoModel):
         suppress_plotting: bool = True,
         suppress_lattice_calc: bool = True,
         log: str = "DEBUG",
+        exclude_matches: list[str] | None = None,
     ) -> bool:
         """
         Apply this configuration to Tao.
@@ -287,15 +292,21 @@ class TaoSettableModel(TaoModel):
         plot_on = tao_global["plot_on"]
         lat_calc_on = tao_global["lattice_calc_on"]
 
+        exclude_matches = list(exclude_matches or [])
+
         if suppress_plotting and plot_on:
             tao.cmd("set global plot_on = F")
         if suppress_lattice_calc and lat_calc_on:
             tao.cmd("set global lattice_calc_on = F")
 
+        exclude = [re.compile(line, flags=re.IGNORECASE) for line in exclude_matches]
+
         log_level: int = getattr(logging, log.upper())
 
         try:
             for cmd in self.get_set_commands(tao=tao if only_changed else None):
+                if any(regex.match(cmd) for regex in exclude):
+                    continue
                 try:
                     logger.log(log_level, f"Tao> {cmd}")
                     for line in tao.cmd(cmd):
