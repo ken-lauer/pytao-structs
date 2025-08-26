@@ -89,7 +89,7 @@ def _check_equality(obj1: Any, obj2: Any) -> bool:
 class TaoAttributesModel(
     pydantic.BaseModel,
     validate_assignment=True,
-    extra="allow",  # NOTE: differs from the rest of pystructs
+    extra="allow",
 ):
     """
     A helper base class which allows for creating/updating an instance with Tao objects.

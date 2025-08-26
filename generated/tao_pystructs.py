@@ -103,7 +103,7 @@ class TaoModel(
     str_strip_whitespace=True,  # Strip whitespace from strings
     str_min_length=0,  # We can't write empty strings currently
     validate_assignment=True,
-    extra="forbid",
+    extra="allow",
 ):
     """
     A helper base class which allows for creating/updating an instance with Tao objects.
@@ -232,6 +232,13 @@ class TaoSettableModel(TaoModel):
                 cmds.append(f"set {set_name} {attr} = {set_value}")
             else:
                 cmds.append(f"set {set_name} {attr}({index + 1}) = {set_value}")
+
+        if self.model_extra:
+            logger.warning(
+                "Unhandled extra fields - code regeneration required. Class '%s': %s.",
+                type(self).__name__,
+                ", ".join(sorted(self.model_extra)),
+            )
         return cmds
 
     @property
@@ -485,12 +492,24 @@ class BeamInit(TaoSettableModel):
         Correlation of Pz with long position.
     dt_bunch : float
         Time between bunches.
+    ellipse_n_ellipse : sequence of integers
+    ellipse_part_per_ellipse : sequence of integers
+    ellipse_sigma_cutoff : sequence of floats
     emit_jitter : sequence of floats
         a and b bunch emittance rms jitter normalized to emittance
     full_6d_coupling_calc : bool
         Use V from 6x6 1-turn mat to match distribution? Else use 4x4 1-turn mat used.
+    grid_n_px : sequence of integers
+    grid_n_x : sequence of integers
+    grid_px_max : sequence of floats
+    grid_px_min : sequence of floats
+    grid_x_max : sequence of floats
+    grid_x_min : sequence of floats
     ix_turn : int
         Turn index used to adjust particles time if needed.
+    kv_a : float
+    kv_n_i2 : int
+    kv_part_per_phi : sequence of integers
     n_bunch : int
         Number of bunches.
     n_particle : int
@@ -561,6 +580,9 @@ class BeamInit(TaoSettableModel):
     )
     dpz_dz: float = Field(default=0.0, description="Correlation of Pz with long position.")
     dt_bunch: float = Field(default=0.0, description="Time between bunches.")
+    ellipse_n_ellipse: IntSequence = Field(default_factory=list, max_length=3)
+    ellipse_part_per_ellipse: IntSequence = Field(default_factory=list, max_length=3)
+    ellipse_sigma_cutoff: FloatSequence = Field(default_factory=list, max_length=3)
     emit_jitter: FloatSequence = Field(
         default=[0.0, 0.0],
         max_length=2,
@@ -570,9 +592,18 @@ class BeamInit(TaoSettableModel):
         default=False,
         description="Use V from 6x6 1-turn mat to match distribution? Else use 4x4 1-turn mat used.",
     )
+    grid_n_px: IntSequence = Field(default_factory=list, max_length=3)
+    grid_n_x: IntSequence = Field(default_factory=list, max_length=3)
+    grid_px_max: FloatSequence = Field(default_factory=list, max_length=3)
+    grid_px_min: FloatSequence = Field(default_factory=list, max_length=3)
+    grid_x_max: FloatSequence = Field(default_factory=list, max_length=3)
+    grid_x_min: FloatSequence = Field(default_factory=list, max_length=3)
     ix_turn: int = Field(
         default=0, description="Turn index used to adjust particles time if needed."
     )
+    kv_a: float = Field(default=0.0, attr="kv_a", tao_name="kv_A")
+    kv_n_i2: int = Field(default=0, attr="kv_n_i2", tao_name="kv_n_I2")
+    kv_part_per_phi: IntSequence = Field(default_factory=list, max_length=2)
     n_bunch: int = Field(default=0, description="Number of bunches.")
     n_particle: int = Field(default=0, description="Number of particles per bunch.")
     position_file: str = Field(default="", description="File with particle positions.")
@@ -1267,8 +1298,7 @@ class ElementHead(TaoModel):
     ix_ele: int = ROField(
         default=-1,
         description=(
-            "Index in branch ele(0:) array. Set to ix_slice_slave$ = -2 for "
-            "slice_slave$ elements."
+            "Index in branch ele(0:) array. Set to ix_slice_slave$ = -2 for slice_slave$ elements."
         ),
     )
     key: str = ROField(default=0, description="Element class (quadrupole, etc.).")
@@ -1565,7 +1595,7 @@ class ElementOrbit(TaoModel):
         For non-photons: Reference momentum. For photons: Photon momentum (not
         reference).
     phase : sequence of floats
-        Photon E-field phase (x,y).
+        Photon E-field phase (x,y). For charged particles, phase(1) is RF phase.
     px : float
     py : float
     pz : float
@@ -1605,8 +1635,7 @@ class ElementOrbit(TaoModel):
     dt_ref: float = ROField(
         default=0.0,
         description=(
-            "Used in: * time tracking for computing z. * by coherent photons = "
-            "path_length/c_light."
+            "Used in: * time tracking for computing z. * by coherent photons = path_length/c_light."
         ),
     )
     field: FloatSequence = ROField(
@@ -1623,11 +1652,13 @@ class ElementOrbit(TaoModel):
     p0c: float = ROField(
         default=0.0,
         description=(
-            "For non-photons: Reference momentum. For photons: Photon momentum (not " "reference)."
+            "For non-photons: Reference momentum. For photons: Photon momentum (not reference)."
         ),
     )
     phase: FloatSequence = ROField(
-        default=[0.0, 0.0], max_length=2, description="Photon E-field phase (x,y)."
+        default=[0.0, 0.0],
+        max_length=2,
+        description="Photon E-field phase (x,y). For charged particles, phase(1) is RF phase.",
     )
     px: float = ROField(default=0.0)
     py: float = ROField(default=0.0)
@@ -1964,8 +1995,7 @@ class ElementWall3DTable(TaoModel):
         default=[0.0, 0.0],
         max_length=2,
         description=(
-            "Center of section Section-to-section spline interpolation of the center of "
-            "the section"
+            "Center of section Section-to-section spline interpolation of the center of the section"
         ),
     )
     s: float = Field(default=0.0, description="Longitudinal position")
@@ -2160,7 +2190,7 @@ class TaoGlobal(TaoSettableModel):
         SVD singular value cutoff.
     svd_retreat_on_merit_increase : bool
     symbol_import : bool
-        Import symbols from lattice file(s)?
+        Import symbols from lattice file(s)? Internal stuff
     track_type : str
         or 'beam'
     unstable_penalty : float
@@ -2255,8 +2285,7 @@ class TaoGlobal(TaoSettableModel):
     srdt_use_cache: bool = Field(
         default=True,
         description=(
-            "Create cache for SRDT calculations.  Can use lots of memory if "
-            "srdt_*_n_slices large."
+            "Create cache for SRDT calculations.  Can use lots of memory if srdt_*_n_slices large."
         ),
     )
     stop_on_error: bool = Field(
@@ -2264,7 +2293,9 @@ class TaoGlobal(TaoSettableModel):
     )
     svd_cutoff: float = Field(default=1e-05, description="SVD singular value cutoff.")
     svd_retreat_on_merit_increase: bool = Field(default=True)
-    symbol_import: bool = Field(default=False, description="Import symbols from lattice file(s)?")
+    symbol_import: bool = Field(
+        default=False, description="Import symbols from lattice file(s)? Internal stuff"
+    )
     track_type: str = Field(default="single", description="or 'beam'")
     unstable_penalty: float = Field(
         default=0.001, description="Used in unstable_ring datum merit calculation."

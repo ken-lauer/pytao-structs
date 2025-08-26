@@ -106,7 +106,7 @@ class TaoModel(
     str_strip_whitespace=True,  # Strip whitespace from strings
     str_min_length=0,  # We can't write empty strings currently
     validate_assignment=True,
-    extra="forbid",
+    extra="allow",
 ):
     """
     A helper base class which allows for creating/updating an instance with Tao objects.
@@ -235,6 +235,13 @@ class TaoSettableModel(TaoModel):
                 cmds.append(f"set {set_name} {attr} = {set_value}")
             else:
                 cmds.append(f"set {set_name} {attr}({index + 1}) = {set_value}")
+
+        if self.model_extra:
+            logger.warning(
+                "Unhandled extra fields - code regeneration required. Class '%s': %s.",
+                type(self).__name__,
+                ", ".join(sorted(self.model_extra)),
+            )
         return cmds
 
     @property

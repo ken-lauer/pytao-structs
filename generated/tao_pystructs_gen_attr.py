@@ -87,7 +87,7 @@ def _check_equality(obj1: Any, obj2: Any) -> bool:
 class TaoAttributesModel(
     pydantic.BaseModel,
     validate_assignment=True,
-    extra="allow",  # NOTE: differs from the rest of pystructs
+    extra="allow",
 ):
     """
     A helper base class which allows for creating/updating an instance with Tao objects.
@@ -714,41 +714,114 @@ class Beginning_EleAttributes(TaoAttributesModel):
 
     Attributes
     ----------
+    alpha_a_stored : float
+    alpha_b_stored : float
+    beta_a_stored : float
+    beta_b_stored : float
     cmat_11 : float
+    cmat_11_stored : float
     cmat_12 : float
+    cmat_12_stored : float
     cmat_21 : float
+    cmat_21_stored : float
     cmat_22 : float
+    cmat_22_stored : float
+    dalpha_dpz_a_stored : float
+    dalpha_dpz_b_stored : float
+    dbeta_dpz_a_stored : float
+    dbeta_dpz_b_stored : float
+    deta_dpz_x_stored : float
+    deta_dpz_y_stored : float
+    detap_dpz_x_stored : float
+    detap_dpz_y_stored : float
     e_tot : float
     e_tot_start : float
+    eta_x_stored : float
+    eta_y_stored : float
+    etap_x_stored : float
+    etap_y_stored : float
     inherit_from_fork : bool
     lord_status : str
     mode_flip : bool
+    mode_flip_stored : bool
     p0c : float
     p0c_start : float
+    phi_a_stored : float
+    phi_b_stored : float
+    px_stored : float
+    py_stored : float
+    pz_stored : float
     slave_status : str
     spin_dn_dpz_x : float
     spin_dn_dpz_y : float
     spin_dn_dpz_z : float
     units : dict[str, str]
         Per-attribute unit information.
+    x_stored : float
+    y_stored : float
+    z_stored : float
     """
 
     _tao_skip_if_0_: ClassVar[tuple[str, ...]] = ()
     key: Literal["Beginning_Ele"]  # = "Beginning_Ele"
 
+    alpha_a_stored: float = ROField(default=0.0, attr="alpha_a_stored", tao_name="ALPHA_A_STORED")
+    alpha_b_stored: float = ROField(default=0.0, attr="alpha_b_stored", tao_name="ALPHA_B_STORED")
+    beta_a_stored: float = ROField(default=0.0, attr="beta_a_stored", tao_name="BETA_A_STORED")
+    beta_b_stored: float = ROField(default=0.0, attr="beta_b_stored", tao_name="BETA_B_STORED")
     cmat_11: float = ROField(default=0.0, attr="cmat_11", tao_name="CMAT_11")
+    cmat_11_stored: float = ROField(default=0.0, attr="cmat_11_stored", tao_name="CMAT_11_STORED")
     cmat_12: float = ROField(default=0.0, attr="cmat_12", tao_name="CMAT_12")
+    cmat_12_stored: float = ROField(default=0.0, attr="cmat_12_stored", tao_name="CMAT_12_STORED")
     cmat_21: float = ROField(default=0.0, attr="cmat_21", tao_name="CMAT_21")
+    cmat_21_stored: float = ROField(default=0.0, attr="cmat_21_stored", tao_name="CMAT_21_STORED")
     cmat_22: float = ROField(default=0.0, attr="cmat_22", tao_name="CMAT_22")
+    cmat_22_stored: float = ROField(default=0.0, attr="cmat_22_stored", tao_name="CMAT_22_STORED")
+    dalpha_dpz_a_stored: float = ROField(
+        default=0.0, attr="dalpha_dpz_a_stored", tao_name="DALPHA_DPZ_A_STORED"
+    )
+    dalpha_dpz_b_stored: float = ROField(
+        default=0.0, attr="dalpha_dpz_b_stored", tao_name="DALPHA_DPZ_B_STORED"
+    )
+    dbeta_dpz_a_stored: float = ROField(
+        default=0.0, attr="dbeta_dpz_a_stored", tao_name="DBETA_DPZ_A_STORED"
+    )
+    dbeta_dpz_b_stored: float = ROField(
+        default=0.0, attr="dbeta_dpz_b_stored", tao_name="DBETA_DPZ_B_STORED"
+    )
+    deta_dpz_x_stored: float = ROField(
+        default=0.0, attr="deta_dpz_x_stored", tao_name="DETA_DPZ_X_STORED"
+    )
+    deta_dpz_y_stored: float = ROField(
+        default=0.0, attr="deta_dpz_y_stored", tao_name="DETA_DPZ_Y_STORED"
+    )
+    detap_dpz_x_stored: float = ROField(
+        default=0.0, attr="detap_dpz_x_stored", tao_name="DETAP_DPZ_X_STORED"
+    )
+    detap_dpz_y_stored: float = ROField(
+        default=0.0, attr="detap_dpz_y_stored", tao_name="DETAP_DPZ_Y_STORED"
+    )
     e_tot: float = ROField(default=0.0, attr="e_tot", tao_name="E_TOT")
     e_tot_start: float = ROField(default=0.0, attr="e_tot_start", tao_name="E_TOT_START")
+    eta_x_stored: float = ROField(default=0.0, attr="eta_x_stored", tao_name="ETA_X_STORED")
+    eta_y_stored: float = ROField(default=0.0, attr="eta_y_stored", tao_name="ETA_Y_STORED")
+    etap_x_stored: float = ROField(default=0.0, attr="etap_x_stored", tao_name="ETAP_X_STORED")
+    etap_y_stored: float = ROField(default=0.0, attr="etap_y_stored", tao_name="ETAP_Y_STORED")
     inherit_from_fork: bool = ROField(
         default=False, attr="inherit_from_fork", tao_name="INHERIT_FROM_FORK"
     )
     lord_status: str = ROField(default="")
     mode_flip: bool = ROField(default=False, attr="mode_flip", tao_name="MODE_FLIP")
+    mode_flip_stored: bool = ROField(
+        default=False, attr="mode_flip_stored", tao_name="MODE_FLIP_STORED"
+    )
     p0c: float = ROField(default=0.0, attr="p0c", tao_name="P0C")
     p0c_start: float = ROField(default=0.0, attr="p0c_start", tao_name="P0C_START")
+    phi_a_stored: float = ROField(default=0.0, attr="phi_a_stored", tao_name="PHI_A_STORED")
+    phi_b_stored: float = ROField(default=0.0, attr="phi_b_stored", tao_name="PHI_B_STORED")
+    px_stored: float = ROField(default=0.0, attr="px_stored", tao_name="PX_STORED")
+    py_stored: float = ROField(default=0.0, attr="py_stored", tao_name="PY_STORED")
+    pz_stored: float = ROField(default=0.0, attr="pz_stored", tao_name="PZ_STORED")
     slave_status: str = ROField(default="")
     spin_dn_dpz_x: float = ROField(default=0.0, attr="spin_dn_dpz_x", tao_name="SPIN_DN_DPZ_X")
     spin_dn_dpz_y: float = ROField(default=0.0, attr="spin_dn_dpz_y", tao_name="SPIN_DN_DPZ_Y")
@@ -756,6 +829,9 @@ class Beginning_EleAttributes(TaoAttributesModel):
     units: dict[str, str] = ROField(
         default=None, description="Per-attribute unit information.", attr="", tao_name="units"
     )
+    x_stored: float = ROField(default=0.0, attr="x_stored", tao_name="X_STORED")
+    y_stored: float = ROField(default=0.0, attr="y_stored", tao_name="Y_STORED")
+    z_stored: float = ROField(default=0.0, attr="z_stored", tao_name="Z_STORED")
 
 
 class Crab_CavityAttributes(TaoAttributesModel):
@@ -2574,7 +2650,7 @@ class LcavityAttributes(TaoAttributesModel):
 
 class MarkerAttributes(TaoAttributesModel):
     """
-    Structure which corresponds to Tao `pipe ele:gen_attribs 56`, for example.
+    Structure which corresponds to Tao `pipe ele:gen_attribs 59`, for example.
 
     Attributes
     ----------
